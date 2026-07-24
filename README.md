@@ -8,6 +8,9 @@ The core idea: **the design *is* a parametric script.** Chat edits patch the
 script; sliders tune its parameters; export emits the geometry. Everything —
 editing, versioning, parametrics — falls out of that one choice.
 
+**Live:** https://chisel.theradicalparty.com · pushes to `main` auto-deploy via
+the Forgejo post-receive hook.
+
 ## Architecture (v0 — MVP)
 
 ```
