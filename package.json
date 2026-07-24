@@ -1,0 +1,34 @@
+{
+  "name": "chisel",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Chisel — AI CAD. Message what you want built; it appears in 3D, exportable to real CAD.",
+  "scripts": {
+    "dev:client": "vite",
+    "dev": "wrangler dev",
+    "build:client": "vite build",
+    "deploy": "npm run build:client && wrangler deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@jscad/modeling": "^2.12.5",
+    "@jscad/stl-serializer": "^2.1.13",
+    "hono": "^4.6.14"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260724.1",
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.10",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@types/three": "^0.169.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.169.0",
+    "typescript": "^5.7.2",
+    "vite": "^5.4.11",
+    "wrangler": "^4.114.0"
+  }
+}
