@@ -53,12 +53,13 @@ async function claudePython(apiKey: string, request: string): Promise<string> {
 export async function generateStep(
   apiKey: string,
   serviceUrl: string,
+  secret: string,
   request: string
 ): Promise<ArrayBuffer> {
   const code = await claudePython(apiKey, request);
   const res = await fetch(`${serviceUrl.replace(/\/$/, "")}/run`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-chisel-secret": secret },
     body: JSON.stringify({ code }),
   });
   if (!res.ok) {

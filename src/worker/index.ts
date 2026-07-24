@@ -8,6 +8,7 @@ import { generateStep } from "./step";
 interface Env {
   ANTHROPIC_API_KEY: string;
   STEP_SERVICE_URL?: string;
+  STEP_SHARED_SECRET?: string;
   DB: D1Database;
   ASSETS: { fetch: typeof fetch };
 }
@@ -82,7 +83,12 @@ app.post("/api/step", async (c) => {
   if (!c.env.STEP_SERVICE_URL) return c.json({ error: "STEP engine not configured yet." }, 503);
   if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: "ANTHROPIC_API_KEY not set" }, 500);
   try {
-    const step = await generateStep(c.env.ANTHROPIC_API_KEY, c.env.STEP_SERVICE_URL, request);
+    const step = await generateStep(
+      c.env.ANTHROPIC_API_KEY,
+      c.env.STEP_SERVICE_URL,
+      c.env.STEP_SHARED_SECRET ?? "",
+      request
+    );
     return new Response(step, {
       headers: {
         "content-type": "application/step",
