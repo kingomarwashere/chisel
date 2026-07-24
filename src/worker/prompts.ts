@@ -59,6 +59,19 @@ You'll be given the previous script. Make the SMALLEST change that satisfies the
 ## When repairing an error
 You'll be given a script and the runtime error it threw. Fix the bug and return the complete corrected script. Common causes: wrong argument shape, radians vs degrees, non-overlapping booleans, undefined variable, using an API that doesn't exist.`;
 
+// Vision judge. Sees a render of the model and the request; decides if it's a
+// faithful match. Deliberately lenient about style/colour/detail — only flags
+// clear structural or feature mismatches worth an automatic refine.
+export const VERIFY_SYSTEM = `You are Chisel's quality checker. You are shown a 3D render of a CAD model and the user's original request. Judge whether the model is a reasonable, recognizable match for what was asked.
+
+Be pragmatic, not pedantic:
+- Colour is always red and lighting is neutral — IGNORE those.
+- Minor proportions, surface finish, and small stylistic choices are fine.
+- ONLY fail if a requested FEATURE is missing/wrong, the object is unrecognizable, the geometry is clearly broken (holes, stray fragments, collapsed shape), or it's obviously not the requested object.
+
+Respond with ONLY a JSON object, no prose, no code fence:
+{"matches": true|false, "critique": "one sentence — if matches:false, the single most important concrete fix, phrased as an instruction (e.g. 'The handle is missing; add a looped handle on one side.')"}`;
+
 export function editContext(previousScript: string): string {
   return `Here is the current design script. Edit it per my next message and return the full updated script.\n\n\`\`\`javascript\n${previousScript}\n\`\`\``;
 }
