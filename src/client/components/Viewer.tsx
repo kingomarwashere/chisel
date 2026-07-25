@@ -26,9 +26,15 @@ function Model({ stl }: { stl: ArrayBuffer }) {
 // Needs preserveDrawingBuffer on the GL context (set on <Canvas> below).
 function CaptureBridge({ captureRef }: { captureRef: MutableRefObject<(() => string | null) | null> }) {
   const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  const camera = useThree((s) => s.camera);
   useEffect(() => {
     captureRef.current = () => {
       try {
+        // Force a synchronous render into the (preserved) drawing buffer right
+        // before reading it — otherwise toDataURL can grab a pre-render black
+        // frame on the first/heavy model and the verifier thinks it's empty.
+        gl.render(scene, camera);
         return gl.domElement.toDataURL("image/png");
       } catch {
         return null;
@@ -37,7 +43,7 @@ function CaptureBridge({ captureRef }: { captureRef: MutableRefObject<(() => str
     return () => {
       captureRef.current = null;
     };
-  }, [gl, captureRef]);
+  }, [gl, scene, camera, captureRef]);
   return null;
 }
 
