@@ -5,7 +5,7 @@ import { DesignsDrawer } from "./components/DesignsDrawer";
 import { ColorPicker } from "./components/ColorPicker";
 import { FinishPicker } from "./components/FinishPicker";
 import type { Finish } from "./components/Viewer";
-import { runJscad, parseParams, type Param } from "./engine";
+import { buildModel, parseParams, type Param } from "./engine";
 
 interface Msg {
   role: "user" | "assistant";
@@ -63,6 +63,7 @@ export default function App() {
     }
   });
   const [hideOverlays, setHideOverlays] = useState(false);
+  const [rebuilding, setRebuilding] = useState(false); // param rebuild in flight
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<(() => string | null) | null>(null);
@@ -96,7 +97,7 @@ export default function App() {
       let current = initialScript;
       for (let attempt = 0; attempt <= MAX_REPAIRS; attempt++) {
         try {
-          const buf = await runJscad(current, values);
+          const buf = await buildModel(current, values);
           setStl(buf);
           return current;
         } catch (err) {
@@ -228,11 +229,21 @@ export default function App() {
     }
   }, [input, busy, messages, title, script, runTurn, autosave]);
 
+  // Param drags now hit the server (build123d), so debounce: update the slider
+  // instantly, rebuild the mesh shortly after the user stops moving.
+  const rebuildTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onParam = useCallback(
     (name: string, value: number) => {
       const updated = params.map((p) => (p.name === name ? { ...p, value } : p));
       setParams(updated);
-      runJscad(script, paramValues(updated)).then(setStl).catch(() => {});
+      if (rebuildTimer.current) clearTimeout(rebuildTimer.current);
+      rebuildTimer.current = setTimeout(() => {
+        setRebuilding(true);
+        buildModel(script, paramValues(updated))
+          .then(setStl)
+          .catch(() => {})
+          .finally(() => setRebuilding(false));
+      }, 350);
     },
     [params, script, paramValues]
   );
@@ -261,7 +272,7 @@ export default function App() {
         setParams(p);
         setScript(d.script);
         setDesignId(id);
-        await runJscad(d.script, paramValues(p)).then(setStl);
+        await buildModel(d.script, paramValues(p)).then(setStl);
         setDesignVersion((v) => v + 1);
       } catch (err) {
         setMessages((m) => [...m, { role: "assistant", content: `⚠️ ${(err as Error).message}` }]);
@@ -284,16 +295,16 @@ export default function App() {
     URL.revokeObjectURL(url);
   }, [stl, title]);
 
-  // STEP export (D) — re-authors the design in build123d for a true B-rep file.
+  // STEP export — the SAME build123d script + params as the preview, so the
+  // downloaded B-rep is exactly what's on screen.
   const downloadStep = useCallback(async () => {
-    if (steppy) return;
+    if (steppy || !script) return;
     setSteppy(true);
     try {
-      const brief = messages.filter((m) => m.role === "user").map((m) => m.content).join(". ");
       const res = await fetch("/api/step", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ request: brief || title }),
+        body: JSON.stringify({ script, params: paramValues(params) }),
       });
       if (!res.ok) {
         const e = (await res.json().catch(() => ({}))) as { error?: string };
@@ -310,7 +321,7 @@ export default function App() {
     } finally {
       setSteppy(false);
     }
-  }, [steppy, messages, title]);
+  }, [steppy, script, params, paramValues, title]);
 
   const setModelColor = useCallback((c: string) => {
     setColor(c);
@@ -398,7 +409,10 @@ export default function App() {
 
         {params.length > 0 && (
           <div className="params">
-            <div className="params-title">Parameters · drag to reshape</div>
+            <div className="params-title">
+              Parameters · drag to reshape
+              {rebuilding && <span className="rebuilding"> · rebuilding…</span>}
+            </div>
             {params.map((p) => {
               const min = p.value > 0 ? Math.max(p.value * 0.25, 0.5) : p.value * 2;
               const max = p.value > 0 ? p.value * 2.5 + 5 : Math.max(p.value * 0.25, 5);
@@ -470,7 +484,7 @@ export default function App() {
             <button onClick={downloadStep} disabled={steppy} title="True B-rep for Fusion/SolidWorks/FreeCAD">
               {steppy ? "Building STEP…" : "Download STEP"}
             </button>
-            <button className="ghost" onClick={() => navigator.clipboard.writeText(script)} title="Copy the JSCAD source">
+            <button className="ghost" onClick={() => navigator.clipboard.writeText(script)} title="Copy the build123d source">
               Copy script
             </button>
           </div>

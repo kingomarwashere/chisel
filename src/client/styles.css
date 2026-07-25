@@ -124,3 +124,5 @@ body { background: var(--bg); color: var(--text); font-family: var(--mono); }
 .step.on .dot { background: var(--red); border-color: var(--red); box-shadow: 0 0 0 4px rgba(255,45,85,.25); animation: pulse 1.1s infinite; }
 .step.on { color: var(--text); }
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(255,45,85,.25); } 50% { box-shadow: 0 0 0 7px rgba(255,45,85,.05); } }
+
+.rebuilding { color: var(--red); font-style: italic; }

@@ -34,6 +34,8 @@ export const FINISH_OPTIONS: { key: Finish; label: string }[] = [
 function Model({ stl, color, finish }: { stl: ArrayBuffer; color: string; finish: Finish }) {
   const geometry = useMemo<BufferGeometry>(() => {
     const g = new STLLoader().parse(stl.slice(0));
+    // build123d/CAD is Z-up; three.js is Y-up. Rotate so models stand upright.
+    g.rotateX(-Math.PI / 2);
     g.computeVertexNormals();
     g.computeBoundingBox();
     return g;

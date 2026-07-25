@@ -3,7 +3,7 @@ import { callClaude, verifyModel, type ChatMsg } from "./claude";
 import { editContext, repairContext } from "./prompts";
 import { identity } from "./auth";
 import { listDesigns, getDesign, saveDesign, deleteDesign } from "./db";
-import { generateStep } from "./step";
+import { callGeometryService, GeometryError } from "./step";
 
 interface Env {
   ANTHROPIC_API_KEY: string;
@@ -77,17 +77,37 @@ app.post("/api/verify", async (c) => {
   }
 });
 
-// --- STEP export (D) ----------------------------------------------------------
-app.post("/api/step", async (c) => {
-  const { request } = await c.req.json<{ request: string }>();
-  if (!c.env.STEP_SERVICE_URL) return c.json({ error: "STEP engine not configured yet." }, 503);
-  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: "ANTHROPIC_API_KEY not set" }, 500);
+// --- Build the preview mesh (tessellate the build123d script) -----------------
+// Success → binary STL. Model error → 422 {error: traceback} for the repair loop.
+app.post("/api/build", async (c) => {
+  const { script, params } = await c.req.json<{ script: string; params?: Record<string, number> }>();
+  if (!c.env.STEP_SERVICE_URL) return c.json({ error: "Geometry engine not configured." }, 503);
   try {
-    const step = await generateStep(
-      c.env.ANTHROPIC_API_KEY,
+    const stl = await callGeometryService(
       c.env.STEP_SERVICE_URL,
       c.env.STEP_SHARED_SECRET ?? "",
-      request
+      "tessellate",
+      script,
+      params ?? {}
+    );
+    return new Response(stl, { headers: { "content-type": "model/stl", "cache-control": "no-store" } });
+  } catch (e) {
+    const status = e instanceof GeometryError ? e.status : 500;
+    return c.json({ error: (e as Error).message }, status === 422 ? 422 : 500);
+  }
+});
+
+// --- STEP export (same script + params as the preview) ------------------------
+app.post("/api/step", async (c) => {
+  const { script, params } = await c.req.json<{ script: string; params?: Record<string, number> }>();
+  if (!c.env.STEP_SERVICE_URL) return c.json({ error: "Geometry engine not configured." }, 503);
+  try {
+    const step = await callGeometryService(
+      c.env.STEP_SERVICE_URL,
+      c.env.STEP_SHARED_SECRET ?? "",
+      "step",
+      script,
+      params ?? {}
     );
     return new Response(step, {
       headers: {

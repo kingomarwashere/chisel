@@ -19,7 +19,7 @@ export interface ModelResult {
 // Extract the single ```javascript block Chisel's contract requires, plus any
 // one-line prose the model put before it (used as the chat summary).
 function parse(raw: string): ModelResult {
-  const fence = raw.match(/```(?:javascript|js)?\s*\n([\s\S]*?)```/);
+  const fence = raw.match(/```(?:python|py|javascript|js)?\s*\n([\s\S]*?)```/);
   const script = fence ? fence[1].trim() : "";
   const summary = raw.split("```")[0].trim() || "Here's your model.";
   return { script, summary, raw };
