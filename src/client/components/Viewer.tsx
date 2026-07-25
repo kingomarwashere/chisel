@@ -4,7 +4,7 @@ import { OrbitControls, GizmoHelper, GizmoViewport, Grid, Center, Bounds } from 
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import type { BufferGeometry } from "three";
 
-function Model({ stl }: { stl: ArrayBuffer }) {
+function Model({ stl, color }: { stl: ArrayBuffer; color: string }) {
   const geometry = useMemo<BufferGeometry>(() => {
     const g = new STLLoader().parse(stl.slice(0));
     g.computeVertexNormals();
@@ -16,7 +16,7 @@ function Model({ stl }: { stl: ArrayBuffer }) {
   return (
     <Center>
       <mesh geometry={geometry} castShadow receiveShadow>
-        <meshStandardMaterial color="#FF2D55" metalness={0.15} roughness={0.55} />
+        <meshStandardMaterial color={color} metalness={0.15} roughness={0.55} />
       </mesh>
     </Center>
   );
@@ -52,10 +52,11 @@ interface ViewerProps {
   // Changes ONLY when a new design loads (or the user hits Fit). Param tweaks keep
   // the same fitKey so the camera holds still and size changes stay visible.
   fitKey: string;
+  color: string;
   captureRef: MutableRefObject<(() => string | null) | null>;
 }
 
-export function Viewer({ stl, fitKey, captureRef }: ViewerProps) {
+export function Viewer({ stl, fitKey, color, captureRef }: ViewerProps) {
   const controls = useRef(null);
   return (
     <Canvas
@@ -79,7 +80,7 @@ export function Viewer({ stl, fitKey, captureRef }: ViewerProps) {
       {/* key={fitKey} → Bounds refits exactly once per new design, not per param. */}
       {stl && (
         <Bounds key={fitKey} fit clip margin={1.35}>
-          <Model stl={stl} />
+          <Model stl={stl} color={color} />
         </Bounds>
       )}
       <OrbitControls ref={controls} makeDefault enableDamping />

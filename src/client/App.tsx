@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Viewer } from "./components/Viewer";
 import { StageOverlay } from "./components/StageOverlay";
 import { DesignsDrawer } from "./components/DesignsDrawer";
+import { ColorPicker } from "./components/ColorPicker";
 import { runJscad, parseParams, type Param } from "./engine";
 
 interface Msg {
@@ -45,6 +46,13 @@ export default function App() {
   const [designs, setDesigns] = useState<DesignSummary[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [steppy, setSteppy] = useState(false); // STEP export in flight
+  const [color, setColor] = useState<string>(() => {
+    try {
+      return localStorage.getItem("chisel_color") || "#FF2D55";
+    } catch {
+      return "#FF2D55";
+    }
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<(() => string | null) | null>(null);
@@ -294,6 +302,15 @@ export default function App() {
     }
   }, [steppy, messages, title]);
 
+  const setModelColor = useCallback((c: string) => {
+    setColor(c);
+    try {
+      localStorage.setItem("chisel_color", c);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
   const fitKey = String(designVersion);
 
   return (
@@ -393,9 +410,10 @@ export default function App() {
       </aside>
 
       <main className="stage">
-        <Viewer stl={stl} fitKey={fitKey} captureRef={captureRef} />
+        <Viewer stl={stl} fitKey={fitKey} color={color} captureRef={captureRef} />
         <StageOverlay stage={stage} label={STAGE_LABEL[stage]} />
         {title && <div className="title-chip">{title}</div>}
+        {stl && !stage && <ColorPicker color={color} onChange={setModelColor} />}
         {stl && !stage && (
           <div className="toolbar">
             <button onClick={() => setDesignVersion((v) => v + 1)} className="ghost" title="Fit to view">
