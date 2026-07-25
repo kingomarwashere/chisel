@@ -4,3 +4,4 @@ public/
 .dev.vars
 *.log
 .DS_Store
+step-service/.render/*.png

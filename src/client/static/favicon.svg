@@ -1,0 +1,7 @@
+<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+  <rect width="64" height="64" rx="14" fill="#0B0B09"/>
+  <!-- ◢ chisel wedge, matching the wordmark -->
+  <path d="M13 51 L51 51 L51 13 Z" fill="#FF2D55"/>
+  <!-- bright cutting edge along the blade -->
+  <path d="M13 51 L51 13" stroke="#FF9FB0" stroke-width="3" stroke-linecap="round"/>
+</svg>

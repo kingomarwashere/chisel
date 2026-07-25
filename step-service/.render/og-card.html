@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body {
+    background: #0B0B09;
+    font-family: "IBM Plex Mono", monospace;
+    color: #ece9e2;
+    position: relative;
+  }
+  /* blueprint grid */
+  .grid {
+    position: absolute; inset: 0;
+    background-image:
+      linear-gradient(#1b1b17 1px, transparent 1px),
+      linear-gradient(90deg, #1b1b17 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(circle at 30% 45%, #000 30%, transparent 78%);
+    -webkit-mask-image: radial-gradient(circle at 30% 45%, #000 30%, transparent 78%);
+  }
+  .glow { position: absolute; width: 700px; height: 700px; right: -160px; top: -120px;
+    background: radial-gradient(circle, rgba(255,45,85,.16), transparent 62%); }
+  .wrap { position: relative; height: 100%; display: flex; align-items: center; padding: 0 80px; }
+  .left { flex: 1; }
+  .mark { display: flex; align-items: center; gap: 18px; margin-bottom: 30px; }
+  .wedge { width: 54px; height: 54px; }
+  .logo { font-family: "Syne", sans-serif; font-weight: 800; font-size: 60px; letter-spacing: 2px; color: #FF2D55; }
+  h1 { font-family: "Syne", sans-serif; font-weight: 700; font-size: 66px; line-height: 1.05; margin-bottom: 24px; }
+  h1 .red { color: #FF2D55; }
+  p { font-size: 24px; line-height: 1.5; color: #b8b4a9; max-width: 620px; }
+  .url { position: absolute; bottom: 46px; left: 80px; font-size: 22px; color: #8a877e; letter-spacing: 1px; }
+  .badges { position: absolute; bottom: 44px; right: 80px; display: flex; gap: 10px; }
+  .badge { border: 1px solid #2c2c26; border-radius: 20px; padding: 8px 16px; font-size: 18px; color: #b8b4a9; }
+  /* isometric wireframe cube on the right */
+  .art { width: 360px; height: 360px; margin-left: 40px; }
+</style>
+</head>
+<body>
+  <div class="grid"></div>
+  <div class="glow"></div>
+  <div class="wrap">
+    <div class="left">
+      <div class="mark">
+        <svg class="wedge" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#141210"/><path d="M13 51 L51 51 L51 13 Z" fill="#FF2D55"/><path d="M13 51 L51 13" stroke="#FF9FB0" stroke-width="3" stroke-linecap="round"/></svg>
+        <span class="logo">CHISEL</span>
+      </div>
+      <h1>Say it.<br /><span class="red">Shape it.</span></h1>
+      <p>AI CAD — describe what you want built and watch it appear in 3D. Export real, editable STEP files.</p>
+    </div>
+    <svg class="art" viewBox="0 0 200 200" fill="none" stroke="#FF2D55" stroke-width="1.6" stroke-linejoin="round">
+      <!-- isometric cube -->
+      <path d="M100 20 L170 60 L170 140 L100 180 L30 140 L30 60 Z" opacity="0.35"/>
+      <path d="M100 20 L100 100 M100 100 L170 60 M100 100 L30 60" opacity="0.5"/>
+      <path d="M100 100 L100 180" opacity="0.5"/>
+      <path d="M30 60 L100 100 L170 60" opacity="0.9"/>
+      <path d="M30 140 L100 180 L170 140" opacity="0.5"/>
+      <circle cx="100" cy="100" r="4" fill="#FF2D55" stroke="none"/>
+    </svg>
+  </div>
+  <div class="url">chisel.theradicalparty.com</div>
+  <div class="badges">
+    <span class="badge">3D preview</span>
+    <span class="badge">STEP export</span>
+  </div>
+</body>
+</html>

@@ -6,7 +6,8 @@ import react from "@vitejs/plugin-react";
 // the SPA. In dev, `vite` proxies /api to `wrangler dev` on :8787.
 export default defineConfig({
   root: "src/client",
-  publicDir: false,
+  // Static assets (favicon, share image) copied verbatim into the build output.
+  publicDir: "static",
   build: {
     outDir: "../../public",
     emptyOutDir: true,
