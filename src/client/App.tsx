@@ -3,6 +3,8 @@ import { Viewer } from "./components/Viewer";
 import { StageOverlay } from "./components/StageOverlay";
 import { DesignsDrawer } from "./components/DesignsDrawer";
 import { ColorPicker } from "./components/ColorPicker";
+import { FinishPicker } from "./components/FinishPicker";
+import type { Finish } from "./components/Viewer";
 import { runJscad, parseParams, type Param } from "./engine";
 
 interface Msg {
@@ -53,6 +55,14 @@ export default function App() {
       return "#FF2D55";
     }
   });
+  const [finish, setFinish] = useState<Finish>(() => {
+    try {
+      return (localStorage.getItem("chisel_finish") as Finish) || "plastic";
+    } catch {
+      return "plastic";
+    }
+  });
+  const [hideOverlays, setHideOverlays] = useState(false);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<(() => string | null) | null>(null);
@@ -311,6 +321,28 @@ export default function App() {
     }
   }, []);
 
+  const setModelFinish = useCallback((f: Finish) => {
+    setFinish(f);
+    try {
+      localStorage.setItem("chisel_finish", f);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Clean product-shot PNG: hide grid + gizmo, render, capture, restore.
+  const snapshot = useCallback(async () => {
+    setHideOverlays(true);
+    await new Promise((r) => setTimeout(r, 150)); // let React drop the overlays
+    const url = captureRef.current?.();
+    setHideOverlays(false);
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(title || "chisel-model").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.png`;
+    a.click();
+  }, [title]);
+
   const fitKey = String(designVersion);
 
   return (
@@ -410,14 +442,29 @@ export default function App() {
       </aside>
 
       <main className="stage">
-        <Viewer stl={stl} fitKey={fitKey} color={color} captureRef={captureRef} />
+        <Viewer
+          stl={stl}
+          fitKey={fitKey}
+          color={color}
+          finish={finish}
+          hideOverlays={hideOverlays}
+          captureRef={captureRef}
+        />
         <StageOverlay stage={stage} label={STAGE_LABEL[stage]} />
         {title && <div className="title-chip">{title}</div>}
-        {stl && !stage && <ColorPicker color={color} onChange={setModelColor} />}
+        {stl && !stage && (
+          <div className="appearance">
+            <ColorPicker color={color} onChange={setModelColor} />
+            <FinishPicker finish={finish} onChange={setModelFinish} />
+          </div>
+        )}
         {stl && !stage && (
           <div className="toolbar">
             <button onClick={() => setDesignVersion((v) => v + 1)} className="ghost" title="Fit to view">
               ⤢ Fit
+            </button>
+            <button onClick={snapshot} className="ghost" title="Save a clean PNG render">
+              ▣ Snapshot
             </button>
             <button onClick={download}>Download STL</button>
             <button onClick={downloadStep} disabled={steppy} title="True B-rep for Fusion/SolidWorks/FreeCAD">
