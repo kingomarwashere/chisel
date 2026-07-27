@@ -13,7 +13,10 @@
 html, body, #root { height: 100%; margin: 0; }
 body { background: var(--bg); color: var(--text); font-family: var(--mono); }
 
-.app { display: grid; grid-template-columns: 380px 1fr; height: 100vh; }
+.app { display: grid; grid-template-columns: 380px 1fr; height: 100vh; height: 100dvh; }
+
+/* Phone-only view toggle — hidden on wide screens, shown in the media query. */
+.mobile-toggle { display: none; }
 
 /* --- Chat panel --- */
 .chat { display: flex; flex-direction: column; background: var(--panel); border-right: 1px solid var(--line); min-height: 0; }
@@ -126,3 +129,59 @@ body { background: var(--bg); color: var(--text); font-family: var(--mono); }
 @keyframes pulse { 0%,100% { box-shadow: 0 0 0 3px rgba(255,45,85,.25); } 50% { box-shadow: 0 0 0 7px rgba(255,45,85,.05); } }
 
 .rebuilding { color: var(--red); font-style: italic; }
+
+/* ============================================================
+   Mobile / narrow screens
+   The desktop layout is a fixed 380px side-panel + viewer, which
+   collapses on a phone. Below the breakpoint we go single-column
+   full-screen and toggle between the chat and the 3D stage.
+   ============================================================ */
+@media (max-width: 820px) {
+  .app { grid-template-columns: 1fr; grid-template-rows: 1fr; }
+
+  /* Both panels share one full-screen cell; the toggle picks which shows. */
+  .chat, .stage { grid-area: 1 / 1; min-height: 0; min-width: 0; }
+  .chat { border-right: none; }
+  .app.m-model .chat { display: none; }
+  .app.m-chat .stage { display: none; }
+
+  /* Canvas should own touch gestures (orbit/pan/zoom), not the page. */
+  .stage canvas { touch-action: none; }
+
+  /* 16px input avoids iOS auto-zoom on focus; roomier tap targets. */
+  .composer { padding: 12px calc(12px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(12px + env(safe-area-inset-left)); }
+  .composer textarea { font-size: 16px; height: 48px; }
+  .composer button { width: 48px; }
+  .brand { padding-top: calc(14px + env(safe-area-inset-top)); }
+
+  .title-chip { max-width: 60%; }
+
+  /* Toolbar → thumb-reachable bottom strip that scrolls horizontally. */
+  .toolbar {
+    top: auto; bottom: 0; left: 0; right: 0; max-width: none;
+    flex-wrap: nowrap; justify-content: flex-start;
+    overflow-x: auto; -webkit-overflow-scrolling: touch;
+    gap: 8px; padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    background: linear-gradient(to top, rgba(11,11,9,.94) 55%, rgba(11,11,9,0));
+    scrollbar-width: none;
+  }
+  .toolbar::-webkit-scrollbar { display: none; }
+  .toolbar button { flex: 0 0 auto; padding: 11px 16px; }
+
+  /* Lift the appearance cluster clear of the bottom toolbar. */
+  .appearance { bottom: 74px; }
+
+  /* Floating Chat ↔ 3D switch, top-right, clear of the title chip. */
+  .mobile-toggle {
+    display: inline-flex; align-items: center;
+    position: fixed; z-index: 40;
+    top: calc(14px + env(safe-area-inset-top));
+    right: calc(14px + env(safe-area-inset-right));
+    font-family: var(--display); font-weight: 600; font-size: 13px;
+    padding: 9px 15px; border-radius: 20px;
+    background: var(--red); color: #fff; border: none;
+    box-shadow: 0 6px 20px rgba(0,0,0,.45); cursor: pointer;
+  }
+  /* In chat view the toggle would collide with the ＋/☰ header — tuck it below. */
+  .app.m-chat .mobile-toggle { top: auto; bottom: calc(84px + env(safe-area-inset-bottom)); }
+}

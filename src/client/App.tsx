@@ -64,6 +64,7 @@ export default function App() {
   });
   const [hideOverlays, setHideOverlays] = useState(false);
   const [rebuilding, setRebuilding] = useState(false); // param rebuild in flight
+  const [mobileView, setMobileView] = useState<"chat" | "model">("chat"); // narrow-screen toggle
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<(() => string | null) | null>(null);
@@ -73,6 +74,12 @@ export default function App() {
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
   }, [messages, stage]);
+
+  // On phones, jump to the 3D view the moment new geometry lands (build, refine,
+  // or load) so the user watches it appear. CSS ignores this above the breakpoint.
+  useEffect(() => {
+    if (designVersion > 0) setMobileView("model");
+  }, [designVersion]);
 
   const refreshDesigns = useCallback(async () => {
     try {
@@ -357,7 +364,7 @@ export default function App() {
   const fitKey = String(designVersion);
 
   return (
-    <div className="app">
+    <div className={`app ${mobileView === "model" ? "m-model" : "m-chat"}`}>
       <aside className="chat">
         <header className="brand">
           <button className="menu" onClick={() => setDrawerOpen((o) => !o)} title="Your designs">
@@ -490,6 +497,16 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* Phone-only view switch (hidden by CSS on wide screens). */}
+      {stl && (
+        <button
+          className="mobile-toggle"
+          onClick={() => setMobileView((v) => (v === "chat" ? "model" : "chat"))}
+        >
+          {mobileView === "chat" ? "◢ View 3D" : "‹ Chat"}
+        </button>
+      )}
     </div>
   );
 }
