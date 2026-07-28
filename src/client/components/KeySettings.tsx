@@ -69,10 +69,23 @@ export function KeySettings({
             Save
           </button>
         </div>
-        <p className="modal-foot">
-          Prefer your own client? Chisel is also an{" "}
-          <span className="mono">MCP server at /mcp</span> — drive it from Claude Desktop or Cursor.
-        </p>
+        <div className="modal-foot">
+          <b>Prefer your own AI client?</b> Chisel is also an MCP server — connect Claude Desktop,
+          Claude.ai, or Cursor and drive it with your own quota:
+          <button
+            className="copy-url"
+            title="Copy MCP URL"
+            onClick={(e) => {
+              navigator.clipboard.writeText("https://chisel.theradicalparty.com/mcp");
+              const el = e.currentTarget;
+              el.dataset.copied = "1";
+              setTimeout(() => delete el.dataset.copied, 1200);
+            }}
+          >
+            <span className="mono">chisel.theradicalparty.com/mcp</span>
+            <span className="copy-hint">{"⧉"}</span>
+          </button>
+        </div>
       </div>
     </div>
   );

@@ -53,6 +53,66 @@ npm run deploy        # builds client → ./public, then wrangler deploy
 
 Serves at `chisel.theradicalparty.com`.
 
+## Use your own AI
+
+Two ways to run Chisel on your own model quota instead of the hosted key.
+
+### Bring your own key (in the app)
+
+Click the ⚙ gear → paste an [Anthropic API key](https://console.anthropic.com/settings/keys).
+It's stored only in your browser (`localStorage`) and sent as `x-user-key`; the
+Worker prefers it over the hosted key for generate / repair / verify. Remove it
+anytime to fall back to the shared key.
+
+### MCP server (drive Chisel from your own client)
+
+Chisel is a Model Context Protocol server at **`https://chisel.theradicalparty.com/mcp`**
+(Streamable HTTP, stateless JSON-RPC). Your own client's model writes the
+build123d script; Chisel validates and exports the real B-rep — so all the
+language-model cost is on *your* account.
+
+Tools: `build_part` (validate/tessellate → triangle count or the traceback to
+self-repair), `export_step` (→ STEP file), `get_build123d_guide` (the full
+authoring contract). Prompt: `write_cad`.
+
+**Claude.ai** (Pro/Max/Team/Enterprise) — Settings → Connectors → *Add custom
+connector* → paste the `/mcp` URL.
+
+**Claude Desktop** — add to `claude_desktop_config.json` (remote servers go
+through the `mcp-remote` bridge):
+
+```json
+{
+  "mcpServers": {
+    "chisel": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "https://chisel.theradicalparty.com/mcp"]
+    }
+  }
+}
+```
+
+**Cursor** — add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "chisel": { "url": "https://chisel.theradicalparty.com/mcp" }
+  }
+}
+```
+
+Then just ask: *"Design an M4 bolt 20mm long with a hex head, build it, and
+export a STEP."* The client will call `get_build123d_guide`, write a script,
+`build_part` to check it (repairing on any traceback), then `export_step`.
+
+**Locking it down (optional).** The endpoint is open so anyone can connect. To
+require a bearer token: `wrangler secret put MCP_TOKEN`, then have each client
+send `Authorization: Bearer <token>` (Claude.ai/Cursor: add it as a custom
+header; Claude Desktop: `mcp-remote … --header "Authorization: Bearer <token>"`).
+Leaving it open keeps the "any user, their own AI" story — locking it makes it
+private to you.
+
 ## Roadmap
 
 - **v1** — conversational edits as source-of-truth, vision verification (render →
