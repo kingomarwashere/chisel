@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Viewer } from "./components/Viewer";
 import { StageOverlay } from "./components/StageOverlay";
 import { DesignsDrawer } from "./components/DesignsDrawer";
+import { KeySettings } from "./components/KeySettings";
 import { ColorPicker } from "./components/ColorPicker";
 import { FinishPicker } from "./components/FinishPicker";
 import type { Finish } from "./components/Viewer";
@@ -65,11 +66,40 @@ export default function App() {
   const [hideOverlays, setHideOverlays] = useState(false);
   const [rebuilding, setRebuilding] = useState(false); // param rebuild in flight
   const [mobileView, setMobileView] = useState<"chat" | "model">("chat"); // narrow-screen toggle
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [userKey, setUserKey] = useState<string>(() => {
+    try {
+      return localStorage.getItem("chisel_user_key") || "";
+    } catch {
+      return "";
+    }
+  });
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<(() => string | null) | null>(null);
   const designIdRef = useRef<string | null>(null);
   designIdRef.current = designId;
+
+  // BYOK header builder — stable identity, reads the live key via ref so the
+  // request callbacks below don't need to be rebuilt when the key changes.
+  const userKeyRef = useRef(userKey);
+  userKeyRef.current = userKey;
+  const aiHeaders = useCallback((): Record<string, string> => {
+    const k = userKeyRef.current;
+    return k
+      ? { "content-type": "application/json", "x-user-key": k }
+      : { "content-type": "application/json" };
+  }, []);
+
+  const saveUserKey = useCallback((k: string) => {
+    setUserKey(k);
+    try {
+      if (k) localStorage.setItem("chisel_user_key", k);
+      else localStorage.removeItem("chisel_user_key");
+    } catch {
+      /* ignore */
+    }
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo(0, scrollRef.current.scrollHeight);
@@ -112,7 +142,7 @@ export default function App() {
           setStage("fixing");
           const res = await fetch("/api/repair", {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: aiHeaders(),
             body: JSON.stringify({ script: current, error: (err as Error).message }),
           });
           const data = (await res.json()) as GenResponse;
@@ -122,7 +152,7 @@ export default function App() {
       }
       return current;
     },
-    []
+    [aiHeaders]
   );
 
   const capture = useCallback(async (): Promise<string | null> => {
@@ -155,7 +185,7 @@ export default function App() {
       setStage("thinking");
       const res = await fetch("/api/generate", {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: aiHeaders(),
         body: JSON.stringify({ messages: convo, currentScript: priorScript }),
       });
       const data = (await res.json()) as GenResponse;
@@ -177,7 +207,7 @@ export default function App() {
         try {
           const vr = await fetch("/api/verify", {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: aiHeaders(),
             body: JSON.stringify({ request: originalRequest, image: img }),
           });
           const verdict = (await vr.json()) as { matches: boolean; critique: string };
@@ -186,7 +216,7 @@ export default function App() {
             setMessages((m) => [...m, { role: "assistant", content: `Refining: ${verdict.critique}` }]);
             const refineRes = await fetch("/api/generate", {
               method: "POST",
-              headers: { "content-type": "application/json" },
+              headers: aiHeaders(),
               body: JSON.stringify({
                 messages: [{ role: "user", content: verdict.critique }],
                 currentScript: finalScript,
@@ -207,7 +237,7 @@ export default function App() {
       }
       return finalScript;
     },
-    [executeWithRepair, paramValues, capture]
+    [executeWithRepair, paramValues, capture, aiHeaders]
   );
 
   const send = useCallback(async () => {
@@ -371,10 +401,24 @@ export default function App() {
             ☰
           </button>
           <span className="logo">◢ CHISEL</span>
+          <button
+            className={`menu ${userKey ? "byok" : ""}`}
+            onClick={() => setSettingsOpen(true)}
+            title={userKey ? "Using your own AI key" : "Use your own AI key"}
+          >
+            ⚙
+          </button>
           <button className="menu new" onClick={newDesign} title="New design">
             ＋
           </button>
         </header>
+
+        <KeySettings
+          open={settingsOpen}
+          value={userKey}
+          onSave={saveUserKey}
+          onClose={() => setSettingsOpen(false)}
+        />
 
         <DesignsDrawer
           open={drawerOpen}

@@ -1,9 +1,16 @@
 import { SYSTEM_PROMPT, VERIFY_SYSTEM } from "./prompts";
 
-// Default to Sonnet 4.6 for snappy chat latency. Opus 4.8 gives noticeably better
-// geometric reasoning for hard parts — flip MODEL if quality matters more than speed.
-const MODEL = "claude-sonnet-4-6";
+// Primary does the heavy geometric reasoning; on overload / rate-limit / server
+// errors we automatically retry on the cheaper, faster Haiku so the user still
+// gets a part instead of a 529. Vision verify is a lenient yes/no judge, so it
+// runs on Haiku always — no need to burn Sonnet on it.
+const MODEL_PRIMARY = "claude-sonnet-4-6";
+const MODEL_FALLBACK = "claude-haiku-4-5";
+const VERIFY_MODEL = "claude-haiku-4-5";
 const API = "https://api.anthropic.com/v1/messages";
+
+// Statuses worth retrying on the fallback model (overloaded / throttled / 5xx).
+const FALLBACK_STATUS = new Set([429, 500, 502, 503, 529]);
 
 export interface ChatMsg {
   role: "user" | "assistant";
@@ -16,7 +23,19 @@ export interface ModelResult {
   raw: string;
 }
 
-// Extract the single ```javascript block Chisel's contract requires, plus any
+function post(apiKey: string, model: string, body: Record<string, unknown>): Promise<Response> {
+  return fetch(API, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-api-key": apiKey,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({ model, ...body }),
+  });
+}
+
+// Extract the single ```python block Chisel's contract requires, plus any
 // one-line prose the model put before it (used as the chat summary).
 function parse(raw: string): ModelResult {
   const fence = raw.match(/```(?:python|py|javascript|js)?\s*\n([\s\S]*?)```/);
@@ -25,30 +44,29 @@ function parse(raw: string): ModelResult {
   return { script, summary, raw };
 }
 
-export async function callClaude(apiKey: string, messages: ChatMsg[]): Promise<ModelResult> {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 8000,
-      // Prompt-cache the big system prompt — it's identical every turn.
-      system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
-      messages: messages.map((m) => ({ role: m.role, content: m.content })),
-    }),
-  });
+function textOf(data: { content: Array<{ type: string; text?: string }> }): string {
+  return data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+}
 
-  if (!res.ok) {
-    const body = await res.text();
-    throw new Error(`Claude API ${res.status}: ${body.slice(0, 500)}`);
+export async function callClaude(apiKey: string, messages: ChatMsg[]): Promise<ModelResult> {
+  const body = {
+    max_tokens: 8000,
+    // Prompt-cache the big system prompt — it's identical every turn.
+    system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+    messages: messages.map((m) => ({ role: m.role, content: m.content })),
+  };
+
+  let res = await post(apiKey, MODEL_PRIMARY, body);
+  if (!res.ok && FALLBACK_STATUS.has(res.status)) {
+    res = await post(apiKey, MODEL_FALLBACK, body);
   }
 
-  const data = (await res.json()) as { content: Array<{ type: string; text?: string }> };
-  const raw = data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Claude API ${res.status}: ${err.slice(0, 500)}`);
+  }
+
+  const raw = textOf(await res.json());
   const parsed = parse(raw);
   if (!parsed.script) throw new Error("Model returned no code block.");
   return parsed;
@@ -67,31 +85,21 @@ export async function verifyModel(
   pngDataUrl: string
 ): Promise<Verdict> {
   const b64 = pngDataUrl.replace(/^data:image\/png;base64,/, "");
-  const res = await fetch(API, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model: MODEL,
-      max_tokens: 300,
-      system: [{ type: "text", text: VERIFY_SYSTEM, cache_control: { type: "ephemeral" } }],
-      messages: [
-        {
-          role: "user",
-          content: [
-            { type: "image", source: { type: "base64", media_type: "image/png", data: b64 } },
-            { type: "text", text: `The user asked for: "${request}". Does this model match?` },
-          ],
-        },
-      ],
-    }),
+  const res = await post(apiKey, VERIFY_MODEL, {
+    max_tokens: 300,
+    system: [{ type: "text", text: VERIFY_SYSTEM, cache_control: { type: "ephemeral" } }],
+    messages: [
+      {
+        role: "user",
+        content: [
+          { type: "image", source: { type: "base64", media_type: "image/png", data: b64 } },
+          { type: "text", text: `The user asked for: "${request}". Does this model match?` },
+        ],
+      },
+    ],
   });
   if (!res.ok) throw new Error(`Verify API ${res.status}`);
-  const data = (await res.json()) as { content: Array<{ type: string; text?: string }> };
-  const raw = data.content.filter((b) => b.type === "text").map((b) => b.text).join("");
+  const raw = textOf(await res.json());
   const json = raw.match(/\{[\s\S]*\}/);
   if (!json) return { matches: true, critique: "" }; // fail open — never block on a flaky judge
   try {

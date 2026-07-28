@@ -1,14 +1,16 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { callClaude, verifyModel, type ChatMsg } from "./claude";
 import { editContext, repairContext } from "./prompts";
 import { identity } from "./auth";
 import { listDesigns, getDesign, saveDesign, deleteDesign } from "./db";
 import { callGeometryService, GeometryError } from "./step";
+import { mcp } from "./mcp";
 
-interface Env {
+export interface Env {
   ANTHROPIC_API_KEY: string;
   STEP_SERVICE_URL?: string;
   STEP_SHARED_SECRET?: string;
+  MCP_TOKEN?: string;
   DB: D1Database;
   ASSETS: { fetch: typeof fetch };
 }
@@ -16,6 +18,20 @@ interface Env {
 type Vars = { uid: string };
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
+
+// BYOK: a user may supply their own Anthropic key (sent as x-user-key). When
+// present and well-formed we bill their key instead of ours; otherwise fall
+// back to the hosted key. Returns "" if neither is usable.
+function resolveKey(c: Context<{ Bindings: Env; Variables: Vars }>): string {
+  const own = c.req.header("x-user-key")?.trim();
+  if (own && own.startsWith("sk-ant-")) return own;
+  return c.env.ANTHROPIC_API_KEY || "";
+}
+const NO_KEY = { error: "No Anthropic key — add your own in Settings, or set the server ANTHROPIC_API_KEY." } as const;
+
+// Model Context Protocol server: lets people drive Chisel's geometry engine
+// from their own Claude/Cursor/etc. using their own quota.
+app.route("/mcp", mcp);
 
 // API responses must never be edge-cached (they're per-user and dynamic).
 app.use("/api/*", async (c, next) => {
@@ -31,7 +47,8 @@ app.post("/api/generate", async (c) => {
     currentScript?: string;
   }>();
 
-  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: "ANTHROPIC_API_KEY not set" }, 500);
+  const apiKey = resolveKey(c);
+  if (!apiKey) return c.json(NO_KEY, 500);
   if (!messages?.length) return c.json({ error: "no messages" }, 400);
 
   const convo: ChatMsg[] = [];
@@ -42,7 +59,7 @@ app.post("/api/generate", async (c) => {
   convo.push(...messages);
 
   try {
-    const result = await callClaude(c.env.ANTHROPIC_API_KEY, convo);
+    const result = await callClaude(apiKey, convo);
     return c.json({ script: result.script, summary: result.summary });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
@@ -52,9 +69,10 @@ app.post("/api/generate", async (c) => {
 // --- Repair a script that failed to execute -----------------------------------
 app.post("/api/repair", async (c) => {
   const { script, error } = await c.req.json<{ script: string; error: string }>();
-  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: "ANTHROPIC_API_KEY not set" }, 500);
+  const apiKey = resolveKey(c);
+  if (!apiKey) return c.json(NO_KEY, 500);
   try {
-    const result = await callClaude(c.env.ANTHROPIC_API_KEY, [
+    const result = await callClaude(apiKey, [
       { role: "user", content: repairContext(script, error) },
     ]);
     return c.json({ script: result.script, summary: result.summary });
@@ -67,10 +85,11 @@ app.post("/api/repair", async (c) => {
 // Client renders the model, snapshots the canvas, and asks: does this match?
 app.post("/api/verify", async (c) => {
   const { request, image } = await c.req.json<{ request: string; image: string }>();
-  if (!c.env.ANTHROPIC_API_KEY) return c.json({ error: "ANTHROPIC_API_KEY not set" }, 500);
+  const apiKey = resolveKey(c);
+  if (!apiKey) return c.json({ matches: true, critique: "" });
   if (!image || !request) return c.json({ matches: true, critique: "" });
   try {
-    const verdict = await verifyModel(c.env.ANTHROPIC_API_KEY, request, image);
+    const verdict = await verifyModel(apiKey, request, image);
     return c.json(verdict);
   } catch {
     return c.json({ matches: true, critique: "" }); // never block the user on a flaky judge
