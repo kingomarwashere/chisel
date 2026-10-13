@@ -1,5 +1,6 @@
 import { Hono, type Context } from "hono";
-import { callClaude, verifyModel, type ChatMsg } from "./claude";
+import { callClaude, verifyModel, type ChatMsg, type ModelResult } from "./claude";
+import { callCommons } from "./commons";
 import { editContext, repairContext } from "./prompts";
 import { identity } from "./auth";
 import { listDesigns, getDesign, saveDesign, deleteDesign } from "./db";
@@ -8,6 +9,7 @@ import { mcp } from "./mcp";
 
 export interface Env {
   ANTHROPIC_API_KEY: string;
+  COMMONS_URL?: string;
   STEP_SERVICE_URL?: string;
   STEP_SHARED_SECRET?: string;
   MCP_TOKEN?: string;
@@ -19,15 +21,40 @@ type Vars = { uid: string };
 
 const app = new Hono<{ Bindings: Env; Variables: Vars }>();
 
-// BYOK: a user may supply their own Anthropic key (sent as x-user-key). When
-// present and well-formed we bill their key instead of ours; otherwise fall
-// back to the hosted key. Returns "" if neither is usable.
-function resolveKey(c: Context<{ Bindings: Env; Variables: Vars }>): string {
+// Provider selection. A user's own Anthropic key (x-user-key) → Anthropic
+// (Claude Sonnet, best quality, billed to them). Otherwise → Radical Commons
+// free pooled compute: "credits" without bringing a key. The hosted
+// ANTHROPIC_API_KEY, if set, is kept as an automatic fallback (see generate()).
+type Provider =
+  | { kind: "anthropic"; apiKey: string }
+  | { kind: "commons" };
+
+function resolveProvider(c: Context<{ Bindings: Env; Variables: Vars }>): Provider {
   const own = c.req.header("x-user-key")?.trim();
-  if (own && own.startsWith("sk-ant-")) return own;
-  return c.env.ANTHROPIC_API_KEY || "";
+  if (own && own.startsWith("sk-ant-")) return { kind: "anthropic", apiKey: own };
+  return { kind: "commons" };
 }
-const NO_KEY = { error: "No Anthropic key — add your own in Settings, or set the server ANTHROPIC_API_KEY." } as const;
+
+// Run one generation on the active provider. On the pooled (Commons) path, if
+// the pool is exhausted/erroring and a hosted key exists, fall back to Anthropic
+// so keyless users never hit a dead end.
+async function generate(c: Context<{ Bindings: Env; Variables: Vars }>, p: Provider, convo: ChatMsg[]): Promise<ModelResult> {
+  if (p.kind === "anthropic") return callClaude(p.apiKey, convo);
+  try {
+    return await callCommons(c.env, convo);
+  } catch (commonsErr) {
+    // Pool hiccup: back the keyless path with the hosted key if one's funded.
+    // If that also fails, surface the Commons error — it's the relevant one here.
+    if (c.env.ANTHROPIC_API_KEY) {
+      try {
+        return await callClaude(c.env.ANTHROPIC_API_KEY, convo);
+      } catch {
+        /* hosted key unusable (e.g. no balance) — fall through to Commons error */
+      }
+    }
+    throw commonsErr;
+  }
+}
 
 // Model Context Protocol server: lets people drive Chisel's geometry engine
 // from their own Claude/Cursor/etc. using their own quota.
@@ -47,9 +74,8 @@ app.post("/api/generate", async (c) => {
     currentScript?: string;
   }>();
 
-  const apiKey = resolveKey(c);
-  if (!apiKey) return c.json(NO_KEY, 500);
   if (!messages?.length) return c.json({ error: "no messages" }, 400);
+  const provider = resolveProvider(c);
 
   const convo: ChatMsg[] = [];
   if (currentScript?.trim()) {
@@ -59,8 +85,8 @@ app.post("/api/generate", async (c) => {
   convo.push(...messages);
 
   try {
-    const result = await callClaude(apiKey, convo);
-    return c.json({ script: result.script, summary: result.summary });
+    const result = await generate(c, provider, convo);
+    return c.json({ script: result.script, summary: result.summary, provider: provider.kind, model: result.model });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
@@ -69,13 +95,12 @@ app.post("/api/generate", async (c) => {
 // --- Repair a script that failed to execute -----------------------------------
 app.post("/api/repair", async (c) => {
   const { script, error } = await c.req.json<{ script: string; error: string }>();
-  const apiKey = resolveKey(c);
-  if (!apiKey) return c.json(NO_KEY, 500);
+  const provider = resolveProvider(c);
   try {
-    const result = await callClaude(apiKey, [
+    const result = await generate(c, provider, [
       { role: "user", content: repairContext(script, error) },
     ]);
-    return c.json({ script: result.script, summary: result.summary });
+    return c.json({ script: result.script, summary: result.summary, provider: provider.kind, model: result.model });
   } catch (e) {
     return c.json({ error: (e as Error).message }, 500);
   }
@@ -85,11 +110,13 @@ app.post("/api/repair", async (c) => {
 // Client renders the model, snapshots the canvas, and asks: does this match?
 app.post("/api/verify", async (c) => {
   const { request, image } = await c.req.json<{ request: string; image: string }>();
-  const apiKey = resolveKey(c);
-  if (!apiKey) return c.json({ matches: true, critique: "" });
+  const provider = resolveProvider(c);
+  // Vision verify runs on Anthropic only — Commons' Workers-AI image support is
+  // unreliable, so on the pooled path we skip it (fail open, same as a flaky judge).
+  if (provider.kind !== "anthropic") return c.json({ matches: true, critique: "" });
   if (!image || !request) return c.json({ matches: true, critique: "" });
   try {
-    const verdict = await verifyModel(apiKey, request, image);
+    const verdict = await verifyModel(provider.apiKey, request, image);
     return c.json(verdict);
   } catch {
     return c.json({ matches: true, critique: "" }); // never block the user on a flaky judge

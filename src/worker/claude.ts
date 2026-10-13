@@ -21,7 +21,15 @@ export interface ModelResult {
   script: string;
   summary: string;
   raw: string;
+  model?: string; // human-friendly name of the model that produced this
 }
+
+// Map raw model IDs → friendly labels shown in the UI.
+const LABELS: Record<string, string> = {
+  "claude-sonnet-4-6": "Claude Sonnet 4.6",
+  "claude-haiku-4-5": "Claude Haiku 4.5",
+};
+export const labelFor = (id: string): string => LABELS[id] ?? id;
 
 function post(apiKey: string, model: string, body: Record<string, unknown>): Promise<Response> {
   return fetch(API, {
@@ -56,8 +64,10 @@ export async function callClaude(apiKey: string, messages: ChatMsg[]): Promise<M
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
   };
 
+  let usedModel = MODEL_PRIMARY;
   let res = await post(apiKey, MODEL_PRIMARY, body);
   if (!res.ok && FALLBACK_STATUS.has(res.status)) {
+    usedModel = MODEL_FALLBACK;
     res = await post(apiKey, MODEL_FALLBACK, body);
   }
 
@@ -69,7 +79,7 @@ export async function callClaude(apiKey: string, messages: ChatMsg[]): Promise<M
   const raw = textOf(await res.json());
   const parsed = parse(raw);
   if (!parsed.script) throw new Error("Model returned no code block.");
-  return parsed;
+  return { ...parsed, model: labelFor(usedModel) };
 }
 
 export interface Verdict {

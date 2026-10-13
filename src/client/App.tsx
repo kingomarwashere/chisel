@@ -16,6 +16,8 @@ interface GenResponse {
   script?: string;
   summary?: string;
   error?: string;
+  provider?: "anthropic" | "commons";
+  model?: string;
 }
 interface DesignSummary {
   id: string;
@@ -41,6 +43,8 @@ export default function App() {
   const [script, setScript] = useState("");
   const [params, setParams] = useState<Param[]>([]);
   const [stl, setStl] = useState<ArrayBuffer | null>(null);
+  const [provider, setProvider] = useState<"anthropic" | "commons" | null>(null); // which engine made the last model
+  const [aiModel, setAiModel] = useState<string | null>(null); // friendly name of the AI model used
   const [stage, setStage] = useState<Stage>("");
   const [busy, setBusy] = useState(false);
   const [designVersion, setDesignVersion] = useState(0); // bumps only on new geometry / fit / load
@@ -77,6 +81,7 @@ export default function App() {
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const captureRef = useRef<(() => string | null) | null>(null);
+  const exportRef = useRef<(() => Promise<ArrayBuffer | null>) | null>(null);
   const designIdRef = useRef<string | null>(null);
   designIdRef.current = designId;
 
@@ -190,6 +195,8 @@ export default function App() {
       });
       const data = (await res.json()) as GenResponse;
       if (data.error) throw new Error(data.error);
+      if (data.provider) setProvider(data.provider);
+      if (data.model) setAiModel(data.model);
 
       setStage("building");
       const params0 = parseParams(data.script!);
@@ -321,6 +328,18 @@ export default function App() {
     [paramValues]
   );
 
+  // Deep link: /?design=<id> opens that design straight in the viewer (shareable
+  // links + seeded starter models). Runs once on mount.
+  const deepLoaded = useRef(false);
+  useEffect(() => {
+    if (deepLoaded.current) return;
+    const id = new URLSearchParams(window.location.search).get("design");
+    if (id) {
+      deepLoaded.current = true;
+      loadDesign(id);
+    }
+  }, [loadDesign]);
+
   const download = useCallback(() => {
     if (!stl) return;
     const blob = new Blob([stl], { type: "model/stl" });
@@ -359,6 +378,62 @@ export default function App() {
       setSteppy(false);
     }
   }, [steppy, script, params, paramValues, title]);
+
+  // GLB export — the on-screen mesh with its colour + finish, straight from
+  // three.js. A render/AR format (games, Blender, viewers), unlike STL/STEP.
+  const downloadGlb = useCallback(async () => {
+    if (!stl) return;
+    const buf = await exportRef.current?.();
+    if (!buf) {
+      alert("GLB export failed.");
+      return;
+    }
+    const blob = new Blob([buf], { type: "model/gltf-binary" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${(title || "chisel-model").replace(/[^a-z0-9]+/gi, "-").toLowerCase()}.glb`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [stl, title]);
+
+  // Send the model to Ghost as a new drivable vehicle. Exports the on-screen GLB
+  // (colour + finish included) and POSTs it to the Ghost nav app behind a shared
+  // password; it then shows up in Ghost's garage/fleet.
+  const [ghosting, setGhosting] = useState(false);
+  const sendToGhost = useCallback(async () => {
+    if (ghosting || !stl) return;
+    const pass = prompt("Ghost password:");
+    if (!pass) return;
+    const name = (prompt("Vehicle name:", title || "Chisel Model") || "").trim();
+    if (!name) return;
+    setGhosting(true);
+    try {
+      const buf = await exportRef.current?.();
+      if (!buf) {
+        alert("GLB export failed.");
+        return;
+      }
+      const res = await fetch(
+        `https://ghost.theradicalparty.com/api/custom-cars?name=${encodeURIComponent(name)}`,
+        {
+          method: "POST",
+          headers: { "content-type": "model/gltf-binary", "x-ghost-pass": pass },
+          body: buf,
+        }
+      );
+      if (!res.ok) {
+        const e = (await res.json().catch(() => ({}))) as { error?: string };
+        alert(e.error || `Send to Ghost failed (${res.status})`);
+        return;
+      }
+      alert(`Sent to Ghost 👻 — "${name}" is now in the fleet.`);
+    } catch {
+      alert("Couldn't reach Ghost. Try again.");
+    } finally {
+      setGhosting(false);
+    }
+  }, [ghosting, stl, title]);
 
   const setModelColor = useCallback((c: string) => {
     setColor(c);
@@ -514,9 +589,25 @@ export default function App() {
           finish={finish}
           hideOverlays={hideOverlays}
           captureRef={captureRef}
+          exportRef={exportRef}
         />
         <StageOverlay stage={stage} label={STAGE_LABEL[stage]} />
         {title && <div className="title-chip">{title}</div>}
+        {stl && !stage && provider && (
+          <div
+            className={`provider-chip ${provider}`}
+            onClick={() => setSettingsOpen(true)}
+            title={
+              provider === "commons"
+                ? `Generated by ${aiModel ?? "a pooled model"} via Radical Commons (free pooled compute). Add your own Anthropic key in Settings for Claude Sonnet + vision self-check.`
+                : `Generated by ${aiModel ?? "Claude"} on your own Anthropic key.`
+            }
+          >
+            <span className="pc-icon">{provider === "commons" ? "⚡" : "✦"}</span>
+            <span className="pc-model">{aiModel ?? (provider === "commons" ? "Commons" : "your key")}</span>
+            <span className="pc-src">{provider === "commons" ? "via Commons" : "your key"}</span>
+          </div>
+        )}
         {stl && !stage && (
           <div className="appearance">
             <ColorPicker color={color} onChange={setModelColor} />
@@ -532,6 +623,12 @@ export default function App() {
               ▣ Snapshot
             </button>
             <button onClick={download}>Download STL</button>
+            <button onClick={downloadGlb} title="Mesh + colour/finish for Blender, games, AR & 3D viewers">
+              Download GLB
+            </button>
+            <button onClick={sendToGhost} disabled={ghosting} title="Send to the Ghost nav app as a drivable vehicle">
+              {ghosting ? "Sending…" : "Send to Ghost 👻"}
+            </button>
             <button onClick={downloadStep} disabled={steppy} title="True B-rep for Fusion/SolidWorks/FreeCAD">
               {steppy ? "Building STEP…" : "Download STEP"}
             </button>

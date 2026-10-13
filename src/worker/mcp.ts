@@ -19,7 +19,9 @@ interface Env {
   MCP_TOKEN?: string;
 }
 
-const PROTOCOL_VERSION = "2024-11-05";
+// Versions we can speak, newest first. We echo the client's requested version
+// when we support it (per the MCP spec) so strict clients don't disconnect.
+const SUPPORTED_VERSIONS = ["2025-06-18", "2025-03-26", "2024-11-05"];
 
 // Compact contract embedded in the tool schema so a client model writes a valid
 // script even without first fetching the full guide.
@@ -153,16 +155,31 @@ mcp.post("/", async (c) => {
   }
 
   const { id, method, params } = msg;
-  const reply = (result: unknown) => c.json({ jsonrpc: "2.0", id, result });
-  const rpcErr = (code: number, message: string) => c.json({ jsonrpc: "2.0", id, error: { code, message } });
+
+  // Streamable-HTTP content negotiation: if the client accepts SSE, frame the
+  // single JSON-RPC response as an SSE `message` event (what Claude.ai / Claude
+  // Desktop's remote connector expects); otherwise return plain JSON.
+  const wantsSSE = (c.req.header("accept") || "").includes("text/event-stream");
+  const send = (payload: unknown) =>
+    wantsSSE
+      ? c.body(`event: message\ndata: ${JSON.stringify(payload)}\n\n`, 200, {
+          "content-type": "text/event-stream; charset=utf-8",
+          "cache-control": "no-cache",
+        })
+      : c.json(payload);
+  const reply = (result: unknown) => send({ jsonrpc: "2.0", id, result });
+  const rpcErr = (code: number, message: string) => send({ jsonrpc: "2.0", id, error: { code, message } });
 
   switch (method) {
-    case "initialize":
+    case "initialize": {
+      const requested = params?.protocolVersion;
+      const version = SUPPORTED_VERSIONS.includes(requested) ? requested : SUPPORTED_VERSIONS[0];
       return reply({
-        protocolVersion: PROTOCOL_VERSION,
+        protocolVersion: version,
         capabilities: { tools: {}, prompts: {} },
         serverInfo: { name: "chisel", version: "1.0.0" },
       });
+    }
 
     // Notifications carry no id and expect no JSON-RPC response body.
     case "notifications/initialized":

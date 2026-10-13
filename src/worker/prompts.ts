@@ -46,6 +46,13 @@ Then \`p = {"name": default, ...}\` and \`p.update(params)\`. Users drag sliders
 - Keep it to ONE coherent object matching the request. Don't add unrequested extras.
 - Angles are DEGREES in build123d rotation helpers unless you use radians math explicitly.
 
+## Robustness rules — these prevent the most common hard failures
+- OVERLAP, never just touch. When you union/add two solids, make them overlap by at least ~10mm of real volume. Two parts that only meet on a coplanar face produce a "Null TopoDS_Shape" boolean error. E.g. when stacking a bowl on a pedestal or a tank against a bowl, extend one into the other by an overlap margin, don't align their faces exactly.
+- SUBTRACT tools must fully pierce. A cavity/hole cutter should start above the surface and extend past the far wall (over-length), so the cut is unambiguous — never end a cutter exactly on a face.
+- LOFT between compatible sections. Every sketch in a loft must be non-empty and roughly concentric; avoid a zero-area or wildly offset section.
+- GUARD selectors before fillet/chamfer. Only fillet edges you know exist; select a specific subset (e.g. \`.group_by(SortBy.LENGTH)[-1]\`) rather than all edges, and keep the radius smaller than half the shortest adjacent edge, or the operation throws.
+- \`result\` must be a valid non-empty Solid/Part/Compound. If you assemble disjoint pieces, wrap them in \`Compound(children=[...])\`.
+
 ## Useful build123d API
 Primitives (in BuildPart): Box(l,w,h), Cylinder(radius,height), Sphere(radius), Cone(bottom_radius,top_radius,height), Torus(major_radius,minor_radius), Wedge(...).
 Operations: Hole(radius,depth), CounterBoreHole, CounterSinkHole, extrude(amount=), revolve(), loft(), sweep().

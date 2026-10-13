@@ -11,7 +11,8 @@ import {
   ContactShadows,
 } from "@react-three/drei";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
-import type { BufferGeometry } from "three";
+import { GLTFExporter } from "three/examples/jsm/exporters/GLTFExporter.js";
+import type { BufferGeometry, Mesh } from "three";
 
 // Material finishes — each maps to physical-material params. Keys are the source
 // of truth shared with the FinishPicker UI.
@@ -31,7 +32,7 @@ export const FINISH_OPTIONS: { key: Finish; label: string }[] = [
   { key: "chrome", label: "Chrome" },
 ];
 
-function Model({ stl, color, finish }: { stl: ArrayBuffer; color: string; finish: Finish }) {
+function Model({ stl, color, finish, meshRef }: { stl: ArrayBuffer; color: string; finish: Finish; meshRef: MutableRefObject<Mesh | null> }) {
   const geometry = useMemo<BufferGeometry>(() => {
     const g = new STLLoader().parse(stl.slice(0));
     // build123d/CAD is Z-up; three.js is Y-up. Rotate so models stand upright.
@@ -51,7 +52,7 @@ function Model({ stl, color, finish }: { stl: ArrayBuffer; color: string; finish
   const f = FINISHES[finish] ?? FINISHES.plastic;
 
   return (
-    <mesh geometry={geometry} position={[-cx, -bb.min.y, -cz]} castShadow receiveShadow>
+    <mesh ref={meshRef} geometry={geometry} position={[-cx, -bb.min.y, -cz]} castShadow receiveShadow>
       <meshPhysicalMaterial
         color={color}
         metalness={f.metalness}
@@ -92,10 +93,33 @@ interface ViewerProps {
   finish: Finish;
   hideOverlays?: boolean; // hide grid + gizmo for clean snapshots
   captureRef: MutableRefObject<(() => string | null) | null>;
+  // Exposes a GLB export of the current model (mesh + chosen colour/finish).
+  exportRef: MutableRefObject<(() => Promise<ArrayBuffer | null>) | null>;
 }
 
-export function Viewer({ stl, fitKey, color, finish, hideOverlays, captureRef }: ViewerProps) {
+export function Viewer({ stl, fitKey, color, finish, hideOverlays, captureRef, exportRef }: ViewerProps) {
   const controls = useRef(null);
+  const meshRef = useRef<Mesh | null>(null);
+
+  // GLB export — serialise just the model mesh (Y-up, with its PBR material), so
+  // the download carries the colour + finish the user picked. STL/STEP can't.
+  useEffect(() => {
+    exportRef.current = () =>
+      new Promise((resolve) => {
+        const mesh = meshRef.current;
+        if (!mesh) return resolve(null);
+        new GLTFExporter().parse(
+          mesh,
+          (result) => resolve(result as ArrayBuffer),
+          () => resolve(null),
+          { binary: true }
+        );
+      });
+    return () => {
+      exportRef.current = null;
+    };
+  }, [exportRef]);
+
   return (
     <Canvas
       shadows
@@ -129,7 +153,7 @@ export function Viewer({ stl, fitKey, color, finish, hideOverlays, captureRef }:
       {/* key={fitKey} → Bounds refits exactly once per new design, not per param. */}
       {stl && (
         <Bounds key={fitKey} fit clip margin={1.3}>
-          <Model stl={stl} color={color} finish={finish} />
+          <Model stl={stl} color={color} finish={finish} meshRef={meshRef} />
         </Bounds>
       )}
       {stl && (

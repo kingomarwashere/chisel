@@ -1,5 +1,5 @@
 :root {
-  --red: #ff2d55;
+  --red: #ff0099;
   --bg: #0b0b09;
   --panel: #121210;
   --line: #242420;
@@ -84,6 +84,13 @@ body { background: var(--bg); color: var(--text); font-family: var(--mono); }
 .toolbar button.ghost:hover { border-color: var(--red); }
 
 .title-chip { position: absolute; top: 18px; left: 18px; font-family: var(--display); font-weight: 600; font-size: 14px; color: var(--text); background: rgba(11,11,9,.7); border: 1px solid var(--line); border-radius: 20px; padding: 6px 14px; backdrop-filter: blur(6px); max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.provider-chip { position: absolute; top: 18px; right: 18px; display: flex; align-items: center; gap: 6px; font-family: var(--mono); font-weight: 600; font-size: 11px; letter-spacing: .02em; border-radius: 20px; padding: 5px 11px; backdrop-filter: blur(6px); cursor: pointer; user-select: none; white-space: nowrap; opacity: .85; transition: opacity .15s; }
+.provider-chip:hover { opacity: 1; }
+.provider-chip .pc-icon { font-size: 12px; }
+.provider-chip .pc-model { font-weight: 700; }
+.provider-chip .pc-src { opacity: .7; font-weight: 500; padding-left: 6px; border-left: 1px solid currentColor; }
+.provider-chip.commons { color: #ffd45e; background: rgba(255,180,40,.12); border: 1px solid rgba(255,180,40,.35); }
+.provider-chip.anthropic { color: var(--red); background: rgba(255,45,85,.12); border: 1px solid rgba(255,45,85,.35); }
 
 /* --- Appearance cluster (colour + finish) --- */
 .appearance { position: absolute; bottom: 18px; left: 18px; display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
@@ -150,12 +157,18 @@ body { background: var(--bg); color: var(--text); font-family: var(--mono); }
 .modal-link:hover { color: var(--red); }
 .modal-foot { font-size: 11.5px; line-height: 1.5; color: var(--muted); margin: 14px 0 0; padding-top: 12px; border-top: 1px solid var(--line); }
 .modal-foot b { color: var(--text); }
-.copy-url { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-top: 8px; padding: 9px 11px; background: #0d0d0b; border: 1px solid var(--line); border-radius: 8px; color: var(--text); cursor: pointer; }
+.connect-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+.connect-btn { flex: 1 1 0; min-width: 96px; text-align: center; padding: 9px 12px; border-radius: 8px; font-family: var(--display); font-weight: 600; font-size: 12.5px; cursor: pointer; text-decoration: none; border: 1px solid var(--line); background: #0d0d0b; color: var(--text); transition: border-color .15s, background .15s; }
+.connect-btn:hover { border-color: var(--red); }
+.connect-btn.cursor { background: var(--red); border-color: var(--red); color: #fff; }
+.connect-btn.cursor:hover { filter: brightness(1.08); }
+.connect-btn.claude[data-copied] { border-color: #3ddc84; color: #3ddc84; }
+.connect-btn.claude[data-copied]::after { content: " ✓ paste it"; }
+.copy-url { display: flex; align-items: center; justify-content: center; gap: 8px; flex: 0 0 auto; padding: 9px 11px; background: #0d0d0b; border: 1px solid var(--line); border-radius: 8px; color: var(--text); cursor: pointer; }
 .copy-url:hover { border-color: var(--red); }
-.copy-url .mono { font-family: var(--mono); font-size: 12px; }
-.copy-hint { color: var(--muted); font-size: 13px; }
+.copy-hint { color: var(--muted); font-size: 12px; font-family: var(--mono); }
 .copy-url[data-copied] { border-color: #3ddc84; }
-.copy-url[data-copied] .copy-hint::after { content: " copied"; color: #3ddc84; }
+.copy-url[data-copied] .copy-hint::after { content: " ✓"; color: #3ddc84; }
 
 /* ============================================================
    Mobile / narrow screens
